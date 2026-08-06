@@ -97,25 +97,46 @@ function ghFlush(){
   .then(function(res){
     _saving = false;
     if(res.content && res.content.sha){
-      _ghSha = res.content.sha;       // update SHA for next write
+      // ✅ Success
+      _ghSha = res.content.sha;
       ghMsg('\u2713 Saved', '#16a34a');
       setTimeout(function(){ ghMsg(''); }, 3000);
-      if(_pendingData) ghFlush();     // flush anything queued during this write
-    } else if((res.message||'').toLowerCase().indexOf('sha') !== -1){
-      // Stale SHA — re-fetch and retry
-      ghMsg('Retrying...', '#f59e0b');
-      _ghSha = null;
-      _pendingData = data;            // put data back in queue
-      ghGetSha().then(function(sha){ if(sha) ghFlush(); });
+      if(_pendingData) ghFlush();
     } else {
-      ghMsg('\u2717 ' + (res.message || 'Save failed'), '#c0392b');
-      console.error('[GH] Write failed:', res);
+      var msg = (res.message || '').toLowerCase();
+      // Detect SHA conflict: GitHub says "does not match" or "sha" or 422
+      var isShaError = msg.indexOf('does not match') !== -1
+                    || msg.indexOf('sha') !== -1
+                    || msg.indexOf('conflict') !== -1;
+      if(isShaError){
+        ghMsg('Sync conflict \u2014 resolving...', '#f59e0b');
+        console.warn('[GH] SHA conflict detected, re-fetching...');
+        _ghSha = null;
+        _pendingData = data; // keep our changes queued
+        // Re-fetch SHA then reload latest data and merge before retrying
+        ghGetSha().then(function(sha){
+          if(!sha){ ghMsg('\u2717 Token invalid', '#c0392b'); return; }
+          ghLoad().then(function(latest){
+            if(latest && Object.keys(latest).length){
+              // Merge: latest from GitHub + our in-memory changes on top
+              Object.keys(_ghData).forEach(function(k){ latest[k] = _ghData[k]; });
+              _ghData = latest;
+              _pendingData = _ghData;
+            }
+            ghFlush(); // retry with fresh SHA + merged data
+          });
+        });
+      } else {
+        ghMsg('\u2717 ' + (res.message || 'Save failed'), '#c0392b');
+        console.error('[GH] Write failed:', res);
+      }
     }
   })
   .catch(function(err){
     _saving = false;
-    ghMsg('\u2717 Network error', '#c0392b');
+    ghMsg('\u2717 Network error \u2014 retrying...', '#c0392b');
     console.error('[GH] Save error:', err);
+    setTimeout(function(){ if(_pendingData) ghFlush(); }, 3000);
   });
 }
 
