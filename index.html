@@ -20,17 +20,14 @@ var _saveTimer= null;
 
 function getToken(){ return localStorage.getItem('gh_pat') || ''; }
 
-// Read data — always uses token so SHA is always returned
+// Read data — everyone can read (no token needed for public repo)
+// Token used only when available so SHA is captured for later writes
 function ghLoad(){
   var tok = getToken();
-  if(!tok){
-    // No token yet — return empty, data will load after token is entered
-    console.warn('[GH] No token set. Enter your GitHub token in the Notifications tab.');
-    return Promise.resolve({});
-  }
-  return fetch(GH_API+'?ref='+GH_BRANCH+'&t='+Date.now(), {
-    headers: { 'Authorization': 'token '+tok, 'Accept': 'application/vnd.github.v3+json' }
-  })
+  var headers = { 'Accept': 'application/vnd.github.v3+json' };
+  if(tok) headers['Authorization'] = 'token ' + tok;
+
+  return fetch(GH_API+'?ref='+GH_BRANCH+'&t='+Date.now(), { headers: headers })
   .then(function(r){
     if(r.status===404) return null;
     if(!r.ok) throw new Error('GitHub read failed: '+r.status);
@@ -38,11 +35,25 @@ function ghLoad(){
   })
   .then(function(meta){
     if(!meta) return {};
-    _ghSha = meta.sha;
-    console.log('[GH] Loaded OK. SHA:', _ghSha);
+    _ghSha = meta.sha; // captured whether or not token was used
+    console.log('[GH] Loaded OK. SHA:', _ghSha, '| Token used:', !!tok);
     var raw = decodeURIComponent(escape(atob(meta.content.replace(/\n/g,''))));
     return JSON.parse(raw);
+  })
+  .then(function(data){
+    // If no token, also fetch SHA separately via authenticated call so writes work for admin
+    if(tok) return data;
+    // No token — just return data as-is (read-only teammate)
+    return data;
   });
+}
+
+// Fetch just the SHA (called after admin enters token, so writes work immediately)
+function ghFetchSha(tok){
+  return fetch(GH_API+'?ref='+GH_BRANCH, {
+    headers:{ 'Authorization':'token '+tok, 'Accept':'application/vnd.github.v3+json' }
+  }).then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(meta){ if(meta && meta.sha){ _ghSha = meta.sha; console.log('[GH] SHA fetched:', _ghSha); } });
 }
 
 // Show a small save status indicator in the top bar
@@ -1083,21 +1094,13 @@ $('saveGhPatBtn').addEventListener('click', function(){
   localStorage.setItem('gh_pat', pat);
   $('ghPatInput').value = '';
   updateGhTokenBadge();
-  toast('GitHub token saved — loading data...');
-  // Reload ALL data now that we have a token (this sets _ghSha correctly)
-  ghLoad().then(function(data){
-    _ghData = data || {};
-    members = _ghData['td2_members'] || [];
-    tasks   = _ghData['td2_tasks']   || [];
-    leaves  = _ghData['td2_leaves']  || [];
-    nEmails = _ghData['td2_nEmails'] || [];
-    nLog    = _ghData['td2_nLog']    || [];
-    ejsCfg  = _ghData['td2_ejsCfg2'] || {pk:'',sid:'',tid:''};
-    renderAll();
-    toast('Token saved \u2713 Data loaded. SHA ready — saves will now work.');
+  toast('GitHub token saved — fetching SHA...');
+  // Fetch SHA with the token so writes work immediately
+  ghFetchSha(pat).then(function(){
+    toast('Token saved \u2713 Ready to save data to GitHub.');
   }).catch(function(err){
-    toast('Token saved but load failed: '+err.message);
-    console.error('[GH] Post-token load failed:', err);
+    toast('Token saved but SHA fetch failed: '+err.message);
+    console.error('[GH] SHA fetch failed:', err);
   });
 });
 $('clearGhPatBtn').addEventListener('click', function(){
@@ -1798,17 +1801,9 @@ ghLoad().then(function(data){
   toast('Data loaded from GitHub ✓');
 }).catch(function(err){
   console.error('[GH] Load FAILED:', err);
-  // Fallback to localStorage if GitHub fails
-  members = load('td2_members', []);
-  tasks   = load('td2_tasks',   []);
-  leaves  = load('td2_leaves',  []);
-  nEmails = load('td2_nEmails', []);
-  nLog    = load('td2_nLog',    []);
-  ejsCfg  = load('td2_ejsCfg2', {pk:'',sid:'',tid:''});
-  if(ejsConfigured()) emailjs.init(ejsCfg.pk);
-  renderAll();
+  renderAll(); // render empty state — do NOT fall back to stale localStorage
   var bar = document.getElementById('ghLoadingBar');
-  if(bar){ bar.style.background='#c0392b'; bar.textContent='Could not reach GitHub — showing local data only.'; setTimeout(function(){ bar.remove(); }, 4000); }
+  if(bar){ bar.style.background='#c0392b'; bar.textContent='Could not load data: '+err.message+' — check console (F12).'; setTimeout(function(){ bar.remove(); }, 6000); }
 });
 </script>
 </body>
