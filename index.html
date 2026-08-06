@@ -42,9 +42,9 @@ function ghLoad(){
     });
 }
 
-// ── STEP 2: Get SHA from API (admin only, needed to write) ────────────────────
+// ── STEP 2: Get SHA from API (needed to write) ───────────────────────────────
 function ghGetSha(){
-  var tok = getToken();
+  var tok = getToken() || (_ghData && _ghData['td2_sharedToken']) || '';
   if(!tok) return Promise.resolve(null);
   return fetch(GH_API + '?ref=' + GH_BRANCH + '&t=' + Date.now(), {
     headers: { 'Authorization': 'token ' + tok, 'Accept': 'application/vnd.github.v3+json' }
@@ -57,12 +57,13 @@ function ghGetSha(){
   });
 }
 
-// ── STEP 3: Write data to GitHub (admin only) ─────────────────────────────────
+// ── STEP 3: Write data to GitHub (admin or member with shared token) ─────────
 // All saves are queued — only ONE write happens at a time
 // If a save is already in progress, the latest data is held and sent after
 function ghFlush(){
   if(_saving || !_pendingData) return;
-  var tok = getToken();
+  // Admin uses their own PAT; member uses shared token stored in data.json by admin
+  var tok = getToken() || (_ghData && _ghData['td2_sharedToken']) || '';
   if(!tok){ ghMsg('No token — view only', '#e67e22'); _pendingData = null; return; }
   if(!_ghSha){
     // Need SHA first — fetch then flush
@@ -524,24 +525,54 @@ tr:hover td { background: #fafbfc; }
       <div><h2>&#128276; Email Notifications</h2><div class="sec-sub">Send automatic emails when any task status changes</div></div>
     </div>
 
-    <!-- GitHub Token Setup (Admin only) -->
+    <!-- Access Control Panel -->
     <div style="background:#fff;border:2px solid #3b82d4;border-radius:10px;padding:20px;margin-bottom:18px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-        <div style="font-size:14px;font-weight:700;">&#128274; GitHub Token (Admin Only)</div>
-        <span id="ghTokenBadge" style="font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;background:#f3f4f6;color:#57606a;">Not set</span>
+        <div style="font-size:14px;font-weight:700;">&#128274; Access Control</div>
+        <span id="ghRoleBadge" style="font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;background:#f3f4f6;color:#57606a;">Not signed in</span>
       </div>
-      <div style="font-size:12px;color:#57606a;margin-bottom:14px;">
-        Only the <b>admin (you)</b> needs to enter a token here. Teammates do <b>not</b> need this — they can read all data without a token.<br/>
-        The token is stored <b>only in your browser</b> — it is never pushed to GitHub.<br/>
-        <b>Get a token:</b> <a href="https://github.com/settings/tokens" target="_blank" style="color:#3b82d4;">github.com/settings/tokens</a> &rarr; Generate new token (classic) &rarr; check <b>repo</b> scope.
-      </div>
-      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
-        <div style="flex:1;min-width:260px;">
-          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Personal Access Token</label>
-          <input class="form-control" id="ghPatInput" type="password" placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxx" style="font-family:monospace;"/>
+      <div style="font-size:12px;color:#57606a;margin-bottom:16px;">Choose your role to unlock the right level of access. Stored only in your browser.</div>
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+        <!-- Admin -->
+        <div style="flex:1;min-width:240px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px;">
+          <div style="font-size:13px;font-weight:700;color:#166534;margin-bottom:4px;">&#128081; Team Lead / Manager (Admin)</div>
+          <div style="font-size:11px;color:#57606a;margin-bottom:10px;">Full access — add members, assign tasks, manage everything.</div>
+          <input class="form-control" id="ghPatInput" type="password" placeholder="GitHub token (ghp_...)" style="font-family:monospace;font-size:12px;margin-bottom:8px;"/>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary btn-sm" id="saveGhPatBtn">&#10003; Sign in as Admin</button>
+            <button class="btn btn-danger btn-sm" id="clearGhPatBtn" style="display:none;">Sign out</button>
+          </div>
+          <div style="font-size:11px;color:#57606a;margin-top:8px;">Get token: <a href="https://github.com/settings/tokens" target="_blank" style="color:#3b82d4;">github.com/settings/tokens</a> &rarr; Generate new (classic) &rarr; check <b>repo</b></div>
         </div>
-        <button class="btn btn-primary" id="saveGhPatBtn">&#10003; Save Token</button>
-        <button class="btn btn-danger btn-sm" id="clearGhPatBtn" style="display:none;">Remove Token</button>
+        <!-- Member -->
+        <div style="flex:1;min-width:240px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px;">
+          <div style="font-size:13px;font-weight:700;color:#1d4ed8;margin-bottom:4px;">&#128100; Team Member</div>
+          <div style="font-size:11px;color:#57606a;margin-bottom:10px;">Can update task status (In Progress / Done) only.</div>
+          <input class="form-control" id="memberPinInput" type="password" placeholder="Team PIN (ask your manager)" style="font-size:12px;margin-bottom:8px;"/>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary btn-sm" id="saveMemberPinBtn" style="background:#3b82d4;">&#10003; Sign in as Member</button>
+            <button class="btn btn-danger btn-sm" id="clearMemberPinBtn" style="display:none;">Sign out</button>
+          </div>
+        </div>
+      </div>
+      <!-- PIN + shared token management (admin only) -->
+      <div id="adminPinMgmt" style="display:none;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;">
+        <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:10px;">&#128273; Team Member Access Setup (only you can see this)</div>
+        <div style="margin-bottom:10px;">
+          <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">Step 1 — Team PIN (members enter this to sign in)</label>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input class="form-control" id="setPinInput" type="text" placeholder="e.g. team2024" style="flex:1;min-width:160px;font-size:12px;"/>
+            <button class="btn btn-sm" id="savePinBtn" style="background:#f59e0b;color:#fff;border:none;font-weight:600;">Save PIN</button>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">Step 2 — Shared GitHub Token (lets members save status changes)</label>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input class="form-control" id="setSharedTokenInput" type="password" placeholder="Paste your GitHub token (ghp_...)" style="flex:1;min-width:200px;font-size:12px;font-family:monospace;"/>
+            <button class="btn btn-sm" id="saveSharedTokenBtn" style="background:#f59e0b;color:#fff;border:none;font-weight:600;">Save Token</button>
+          </div>
+          <div style="font-size:11px;color:#57606a;margin-top:4px;">This token is stored in data.json (your GitHub repo). Members use it only to save status changes — they never see it directly.</div>
+        </div>
       </div>
     </div>
 
@@ -1062,7 +1093,7 @@ function renderNotifPanel(){
   $('ejsSID').value = ejsCfg.sid ||'';
   $('ejsTID').value = ejsCfg.tid ||'';
   updateEjsBadge();
-  updateGhTokenBadge();
+  updateRoleBadge();
   // recipient list
   var el=$('nEmailList');
   if(!nEmails.length){
@@ -1102,32 +1133,108 @@ function renderNotifPanel(){
   }
 }
 
-// ── GitHub Token UI ──────────────────────────────────────────────────────────
-function updateGhTokenBadge(){
-  var b=$('ghTokenBadge'), clr=$('clearGhPatBtn');
+// ── Role system ───────────────────────────────────────────────────────────────
+// role: 'admin' | 'member' | '' (view-only)
+function getRole(){ return localStorage.getItem('gh_role') || ''; }
+
+function updateRoleBadge(){
+  var role = getRole();
+  var b = $('ghRoleBadge');
+  var pinMgmt = $('adminPinMgmt');
+  var clrAdmin = $('clearGhPatBtn'), clrMember = $('clearMemberPinBtn');
   if(!b) return;
-  if(getToken()){
-    b.textContent='\u2713 Token saved'; b.style.background='#dcfce7'; b.style.color='#166534';
-    if(clr) clr.style.display='';
+  if(role === 'admin'){
+    b.textContent = '\u2713 Admin'; b.style.background = '#dcfce7'; b.style.color = '#166534';
+    if(clrAdmin) clrAdmin.style.display = '';
+    if(pinMgmt) pinMgmt.style.display = '';
+    // Show PIN currently set
+    var pin = getTeamPin();
+    if(pin && $('setPinInput')) $('setPinInput').value = pin;
+  } else if(role === 'member'){
+    b.textContent = '\u2713 Member'; b.style.background = '#dbeafe'; b.style.color = '#1d4ed8';
+    if(clrMember) clrMember.style.display = '';
+    if(pinMgmt) pinMgmt.style.display = 'none';
   } else {
-    b.textContent='Not set'; b.style.background='#f3f4f6'; b.style.color='#57606a';
-    if(clr) clr.style.display='none';
+    b.textContent = 'Not signed in'; b.style.background = '#f3f4f6'; b.style.color = '#57606a';
+    if(pinMgmt) pinMgmt.style.display = 'none';
   }
+  applyRoleUI();
 }
+
+// Show/hide UI elements based on role
+function applyRoleUI(){
+  var isAdmin = getRole() === 'admin';
+  var isMember = getRole() === 'member';
+  var canWrite = isAdmin || isMember;
+  // Hide add member/task buttons for non-admins
+  document.querySelectorAll('#addMemberBtn, #quickAddBtn, #dailyAddBtn, #monthlyAddBtn, .btn-add-task').forEach(function(el){
+    el.style.display = isAdmin ? '' : 'none';
+  });
+  // Hide delete buttons for non-admins
+  document.querySelectorAll('.tdel, [data-delm], [data-dlt]').forEach(function(el){
+    el.style.display = isAdmin ? '' : 'none';
+  });
+  // Status dropdowns: visible to admin and member, hidden for view-only
+  document.querySelectorAll('[data-stid]').forEach(function(el){
+    el.disabled = !canWrite;
+    el.style.opacity = canWrite ? '1' : '0.5';
+    el.title = canWrite ? '' : 'Sign in as Member or Admin to update status';
+  });
+}
+
+function getTeamPin(){ return localStorage.getItem('gh_team_pin') || ''; }
+
+// Admin sign-in
 $('saveGhPatBtn').addEventListener('click', function(){
   var pat = $('ghPatInput').value.trim();
-  if(!pat || !pat.startsWith('ghp_')){ toast('Enter a valid token starting with ghp_'); return; }
+  if(!pat || !pat.startsWith('ghp_')){ toast('Enter a valid GitHub token (ghp_...)'); return; }
   localStorage.setItem('gh_pat', pat);
+  localStorage.setItem('gh_role', 'admin');
   $('ghPatInput').value = '';
-  updateGhTokenBadge();
-  toast('Token saved \u2713 Connecting...');
+  updateRoleBadge();
+  toast('Signing in as Admin...');
   ghGetSha().then(function(sha){
-    if(sha) toast('Ready \u2713 All your actions will now sync to teammates.');
+    if(sha){ toast('Admin access ready \u2713 All actions sync to teammates.'); renderAll(); }
     else toast('\u2717 Token invalid — generate a new one at github.com/settings/tokens');
   });
 });
 $('clearGhPatBtn').addEventListener('click', function(){
-  localStorage.removeItem('gh_pat'); updateGhTokenBadge(); toast('Token removed.');
+  localStorage.removeItem('gh_pat'); localStorage.removeItem('gh_role');
+  updateRoleBadge(); renderAll(); toast('Signed out.');
+});
+
+// Member sign-in via PIN
+$('saveMemberPinBtn').addEventListener('click', function(){
+  var pin = $('memberPinInput').value.trim();
+  if(!pin){ toast('Enter the team PIN provided by your manager.'); return; }
+  var stored = getTeamPin();
+  if(!stored){ toast('No team PIN set yet — ask your manager to set one first.'); return; }
+  if(pin !== stored){ toast('\u2717 Incorrect PIN. Ask your manager for the team PIN.'); return; }
+  localStorage.setItem('gh_role', 'member');
+  $('memberPinInput').value = '';
+  updateRoleBadge(); renderAll();
+  toast('Signed in as Team Member \u2713 You can now update task statuses.');
+});
+$('clearMemberPinBtn').addEventListener('click', function(){
+  localStorage.removeItem('gh_role'); updateRoleBadge(); renderAll(); toast('Signed out.');
+});
+
+// Admin sets team PIN
+$('savePinBtn').addEventListener('click', function(){
+  var pin = $('setPinInput').value.trim();
+  if(!pin){ toast('Enter a PIN to set.'); return; }
+  localStorage.setItem('gh_team_pin', pin);
+  save('td2_teamPin', pin);
+  toast('Team PIN saved \u2713 Share "' + pin + '" with your team members.');
+});
+
+// Admin saves shared token so members can write status updates
+$('saveSharedTokenBtn').addEventListener('click', function(){
+  var tok = $('setSharedTokenInput').value.trim();
+  if(!tok || !tok.startsWith('ghp_')){ toast('Enter a valid GitHub token (ghp_...)'); return; }
+  $('setSharedTokenInput').value = '';
+  save('td2_sharedToken', tok); // stored in data.json — members load it on page open
+  toast('Shared token saved \u2713 Team members can now update task statuses.');
 });
 
 // Save EmailJS config
@@ -1814,8 +1921,11 @@ ghLoad().then(function(data){
   nEmails = _ghData['td2_nEmails'] || [];
   nLog    = _ghData['td2_nLog']    || [];
   ejsCfg  = _ghData['td2_ejsCfg2'] || {pk:'',sid:'',tid:''};
+  // Load team PIN into localStorage so member sign-in works offline too
+  if(_ghData['td2_teamPin']) localStorage.setItem('gh_team_pin', _ghData['td2_teamPin']);
   if(ejsConfigured()) emailjs.init(ejsCfg.pk);
   renderAll();
+  updateRoleBadge(); // apply role-based UI after render
   var bar = document.getElementById('ghLoadingBar');
   if(bar) bar.remove();
   toast('Data loaded \u2713');
