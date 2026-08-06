@@ -39,11 +39,19 @@ function ghLoad(){
   });
 }
 
+// Show a small save status indicator in the top bar
+function ghStatusMsg(msg, color){
+  var el = document.getElementById('ghSaveStatus');
+  if(!el) return;
+  el.textContent = msg; el.style.color = color || '#8b949e';
+}
+
 // Write data — only works if admin token is stored in browser
 function ghSave(data){
   var tok = getToken();
-  if(!tok) return; // teammates are read-only — no token = no write
+  if(!tok){ ghStatusMsg('Read-only (no token)', '#e67e22'); return; }
   clearTimeout(_saveTimer);
+  ghStatusMsg('Saving...', '#f59e0b');
   _saveTimer = setTimeout(function(){
     var content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
     var body = { message: 'dashboard: update data', content: content, branch: GH_BRANCH };
@@ -59,10 +67,20 @@ function ghSave(data){
     })
     .then(function(r){ return r.json(); })
     .then(function(res){
-      if(res.content){ _ghSha = res.content.sha; }
-      else if(res.message){ console.warn('GitHub write error:', res.message); }
+      if(res.content){
+        _ghSha = res.content.sha;
+        ghStatusMsg('\u2713 Saved to GitHub', '#16a34a');
+        setTimeout(function(){ ghStatusMsg(''); }, 3000);
+      } else {
+        var msg = res.message || 'Unknown error';
+        ghStatusMsg('\u2717 Save failed: '+msg, '#c0392b');
+        console.error('GitHub write error:', res);
+      }
     })
-    .catch(function(err){ console.warn('GitHub save failed:', err); });
+    .catch(function(err){
+      ghStatusMsg('\u2717 Save failed (network)', '#c0392b');
+      console.error('GitHub save failed:', err);
+    });
   }, 1500);
 }
 </script>
@@ -280,7 +298,10 @@ tr:hover td { background: #fafbfc; }
       <div class="topbar-sub">Assign &amp; track tasks for every team member</div>
     </div>
   </div>
-  <div class="topbar-date" id="topDate"></div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <span id="ghSaveStatus" style="font-size:11px;font-weight:600;"></span>
+    <div class="topbar-date" id="topDate"></div>
+  </div>
 </div>
 
 <!-- Nav -->
@@ -1735,7 +1756,7 @@ function renderAll(){
 // ── Init — load from GitHub first, then render ────────────────────────────────
 $('topDate').textContent = new Date().toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
 $('dailyFilterDate').value    = today();
-$('monthlyFilterMonth').value = thisMonth();
+// monthlyFilterMonth input does not exist in this layout — monthly view uses calendar nav instead
 
 // Show a loading indicator while fetching from GitHub
 document.body.insertAdjacentHTML('afterbegin',
