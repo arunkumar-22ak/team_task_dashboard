@@ -1,5 +1,18 @@
 {
-  "td2_members": [],
+  "td2_members": [
+    {
+      "id": "mshbo9p02u2",
+      "name": "Arun",
+      "role": "Lead",
+      "color": "#3b82d4"
+    },
+    {
+      "id": "mshbw5s0eu8",
+      "name": "Sunita",
+      "role": "Lead",
+      "color": "#7c5cd8"
+    }
+  ],
   "td2_tasks": [],
   "td2_leaves": [],
   "td2_nEmails": [],
