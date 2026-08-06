@@ -6,6 +6,58 @@
 <title>Team Task Dashboard</title>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<!-- GitHub Storage config -->
+<script>
+var GH_OWNER  = 'arunkumar-22ak';
+var GH_REPO   = 'team_task_dashboard';
+var GH_BRANCH = 'main';
+var GH_FILE   = 'data.json';
+var GH_TOKEN  = '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';
+var GH_API    = 'https://api.github.com/repos/'+GH_OWNER+'/'+GH_REPO+'/contents/'+GH_FILE;
+
+var _ghSha = null;      // latest file SHA (needed for updates)
+var _saveTimer = null;  // debounce handle
+
+// Read all data from GitHub (returns Promise)
+function ghLoad(){
+  return fetch(GH_API+'?ref='+GH_BRANCH+'&t='+Date.now(), {
+    headers: { 'Authorization': 'token '+GH_TOKEN, 'Accept': 'application/vnd.github.v3+json' }
+  })
+  .then(function(r){
+    if(r.status===404) return null; // file doesn't exist yet
+    if(!r.ok) throw new Error('GitHub read failed: '+r.status);
+    return r.json();
+  })
+  .then(function(meta){
+    if(!meta) return {};
+    _ghSha = meta.sha;
+    var raw = decodeURIComponent(escape(atob(meta.content.replace(/\n/g,''))));
+    return JSON.parse(raw);
+  });
+}
+
+// Write all data to GitHub (debounced 1.5s)
+function ghSave(data){
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(function(){
+    var content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
+    var body = { message: 'dashboard: update data', content: content, branch: GH_BRANCH };
+    if(_ghSha) body.sha = _ghSha;
+    fetch(GH_API, {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'token '+GH_TOKEN,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(res){ if(res.content) _ghSha = res.content.sha; })
+    .catch(function(err){ console.warn('GitHub save failed:', err); });
+  }, 1500);
+}
+</script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; font-size: 14px; line-height: 1.6; background: #f0f2f5; color: #1f2328; min-height: 100vh; }
@@ -605,8 +657,18 @@ tr:hover td { background: #fafbfc; }
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,5); }
-function load(k,d){ try{ return JSON.parse(localStorage.getItem(k))||d; }catch(e){ return d; } }
-function save(k,v){ localStorage.setItem(k,JSON.stringify(v)); }
+// ── GitHub-backed storage (with localStorage fallback while loading) ──────────
+var _ghData = {}; // in-memory mirror of data.json
+
+function load(k,d){
+  if(_ghData && _ghData[k] !== undefined) return _ghData[k];
+  try{ return JSON.parse(localStorage.getItem(k))||d; }catch(e){ return d; }
+}
+function save(k,v){
+  _ghData[k] = v;
+  localStorage.setItem(k, JSON.stringify(v)); // keep local copy as fallback
+  ghSave(_ghData);
+}
 function today(){ return new Date().toISOString().slice(0,10); }
 function thisMonth(){ return new Date().toISOString().slice(0,7); }
 function fmtDate(s){ if(!s) return '—'; var p=s.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
@@ -622,9 +684,9 @@ var SM = {
   'done':         { label:'Done',         cls:'sd', ldot:'ldot-done', seg:'seg-done'}
 };
 
-// ── State ─────────────────────────────────────────────────────────────────────
-var members     = load('td2_members', []);
-var tasks       = load('td2_tasks',   []);
+// ── State (populated after GitHub load) ───────────────────────────────────────
+var members     = [];
+var tasks       = [];
 var dailyFilter = today();
 var mlyFilter   = thisMonth();
 function saveM(){ save('td2_members', members); }
@@ -719,7 +781,7 @@ $('saveTaskBtn').addEventListener('click', function(){
 $('tTitle').addEventListener('keydown', function(e){ if(e.key==='Enter') $('saveTaskBtn').click(); });
 
 // ── Vacation / Leave state ────────────────────────────────────────────────────
-var leaves = load('td2_leaves', []); // [{id,memberId,from,to,type,note}]
+var leaves = []; // [{id,memberId,from,to,type,note}] — populated after GitHub load
 function saveLeaves(){ save('td2_leaves', leaves); }
 
 var LEAVE_TYPE = {
@@ -880,12 +942,12 @@ function buildRowData(taskList){
 
 // ── Status change ─────────────────────────────────────────────────────────────
 // ── Notification state ────────────────────────────────────────────────────────
-var nEmails = load('td2_nEmails',[]); // [{id,email,label}]
-var nLog    = load('td2_nLog',   []); // [{time,member,task,status,to}]
+var nEmails = []; // [{id,email,label}] — populated after GitHub load
+var nLog    = []; // [{time,member,task,status,to}] — populated after GitHub load
 function saveNEmails(){ save('td2_nEmails', nEmails); }
 function saveNLog(){    save('td2_nLog',    nLog);    }
 
-var ejsCfg  = load('td2_ejsCfg2',{pk:'',sid:'',tid:''});
+var ejsCfg  = {pk:'',sid:'',tid:''};
 
 function ejsConfigured(){ return !!(ejsCfg.pk && ejsCfg.sid && ejsCfg.tid); }
 
@@ -978,8 +1040,7 @@ $('nEmailInput').addEventListener('keydown',function(e){ if(e.key==='Enter') $('
 // Clear log
 $('clearNLogBtn').addEventListener('click',function(){ nLog=[]; saveNLog(); renderNotifPanel(); toast('Log cleared.'); });
 
-// Init EmailJS if already configured
-if(ejsConfigured()) emailjs.init(ejsCfg.pk);
+// EmailJS init happens after GitHub data load (see Init section below)
 
 // ── Fire notification on any status change ────────────────────────────────────
 function fireStatusNotification(task, newStatus){
@@ -1612,11 +1673,44 @@ function renderAll(){
   renderNotifPanel();
 }
 
-// ── Init ──────────────────────────────────────────────────────────────────────
+// ── Init — load from GitHub first, then render ────────────────────────────────
 $('topDate').textContent = new Date().toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
-$('dailyFilterDate').value   = today();
+$('dailyFilterDate').value    = today();
 $('monthlyFilterMonth').value = thisMonth();
-renderAll();
+
+// Show a loading indicator while fetching from GitHub
+document.body.insertAdjacentHTML('afterbegin',
+  '<div id="ghLoadingBar" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#3b82d4;color:#fff;text-align:center;padding:10px;font-size:13px;font-weight:600;">Loading shared data from GitHub...</div>'
+);
+
+ghLoad().then(function(data){
+  _ghData = data || {};
+  // Hydrate all state from GitHub data
+  members = _ghData['td2_members'] || [];
+  tasks   = _ghData['td2_tasks']   || [];
+  leaves  = _ghData['td2_leaves']  || [];
+  nEmails = _ghData['td2_nEmails'] || [];
+  nLog    = _ghData['td2_nLog']    || [];
+  ejsCfg  = _ghData['td2_ejsCfg2'] || {pk:'',sid:'',tid:''};
+  if(ejsConfigured()) emailjs.init(ejsCfg.pk);
+  renderAll();
+  var bar = document.getElementById('ghLoadingBar');
+  if(bar) bar.remove();
+  toast('Data loaded from GitHub ✓');
+}).catch(function(err){
+  console.warn('GitHub load failed, using local data:', err);
+  // Fallback to localStorage if GitHub fails
+  members = load('td2_members', []);
+  tasks   = load('td2_tasks',   []);
+  leaves  = load('td2_leaves',  []);
+  nEmails = load('td2_nEmails', []);
+  nLog    = load('td2_nLog',    []);
+  ejsCfg  = load('td2_ejsCfg2', {pk:'',sid:'',tid:''});
+  if(ejsConfigured()) emailjs.init(ejsCfg.pk);
+  renderAll();
+  var bar = document.getElementById('ghLoadingBar');
+  if(bar){ bar.style.background='#c0392b'; bar.textContent='Could not reach GitHub — showing local data only.'; setTimeout(function(){ bar.remove(); }, 4000); }
+});
 </script>
 </body>
 </html>
