@@ -19,7 +19,19 @@
       "color": "#16a34a"
     }
   ],
-  "td2_tasks": [],
+  "td2_tasks": [
+    {
+      "id": "mshckvpq5xw",
+      "memberId": "mshc203b011",
+      "title": "CR01",
+      "desc": "",
+      "type": "daily",
+      "date": "2026-08-06",
+      "month": "2026-08",
+      "status": "in-progress",
+      "createdAt": "2026-08-06T10:02:50.126Z"
+    }
+  ],
   "td2_leaves": [],
   "td2_nEmails": [],
   "td2_nLog": [],
