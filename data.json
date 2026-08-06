@@ -23,12 +23,6 @@
       "name": "Preetha",
       "role": "Manager",
       "color": "#ea580c"
-    },
-    {
-      "id": "mshb9ybpwjm",
-      "name": "Koti",
-      "role": "Developer",
-      "color": "#0891b2"
     }
   ],
   "td2_tasks": [
@@ -51,7 +45,7 @@
       "type": "daily",
       "date": "2026-08-06",
       "month": "2026-08",
-      "status": "done",
+      "status": "in-progress",
       "createdAt": "2026-08-06T08:02:39.898Z"
     }
   ]
