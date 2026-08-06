@@ -20,12 +20,17 @@ var _saveTimer= null;
 
 function getToken(){ return localStorage.getItem('gh_pat') || ''; }
 
-// Read data — uses GitHub API directly (always fresh, no CDN cache)
+// Read data — always uses token so SHA is always returned
 function ghLoad(){
   var tok = getToken();
-  var headers = { 'Accept': 'application/vnd.github.v3+json' };
-  if(tok) headers['Authorization'] = 'token '+tok;
-  return fetch(GH_API+'?ref='+GH_BRANCH+'&t='+Date.now(), { headers: headers })
+  if(!tok){
+    // No token yet — return empty, data will load after token is entered
+    console.warn('[GH] No token set. Enter your GitHub token in the Notifications tab.');
+    return Promise.resolve({});
+  }
+  return fetch(GH_API+'?ref='+GH_BRANCH+'&t='+Date.now(), {
+    headers: { 'Authorization': 'token '+tok, 'Accept': 'application/vnd.github.v3+json' }
+  })
   .then(function(r){
     if(r.status===404) return null;
     if(!r.ok) throw new Error('GitHub read failed: '+r.status);
@@ -34,6 +39,7 @@ function ghLoad(){
   .then(function(meta){
     if(!meta) return {};
     _ghSha = meta.sha;
+    console.log('[GH] Loaded OK. SHA:', _ghSha);
     var raw = decodeURIComponent(escape(atob(meta.content.replace(/\n/g,''))));
     return JSON.parse(raw);
   });
@@ -49,6 +55,7 @@ function ghStatusMsg(msg, color){
 // Write data — only works if admin token is stored in browser
 function ghSave(data){
   var tok = getToken();
+  console.log('[GH] ghSave called. Token present:', !!tok, '| SHA:', _ghSha);
   if(!tok){ ghStatusMsg('Read-only (no token)', '#e67e22'); return; }
   clearTimeout(_saveTimer);
   ghStatusMsg('Saving...', '#f59e0b');
@@ -1076,12 +1083,22 @@ $('saveGhPatBtn').addEventListener('click', function(){
   localStorage.setItem('gh_pat', pat);
   $('ghPatInput').value = '';
   updateGhTokenBadge();
-  toast('GitHub token saved in your browser \u2713');
-  // Re-fetch SHA now that we have a token
-  fetch(GH_API+'?ref='+GH_BRANCH, {
-    headers:{ 'Authorization':'token '+pat, 'Accept':'application/vnd.github.v3+json' }
-  }).then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(meta){ if(meta && meta.sha) _ghSha = meta.sha; });
+  toast('GitHub token saved — loading data...');
+  // Reload ALL data now that we have a token (this sets _ghSha correctly)
+  ghLoad().then(function(data){
+    _ghData = data || {};
+    members = _ghData['td2_members'] || [];
+    tasks   = _ghData['td2_tasks']   || [];
+    leaves  = _ghData['td2_leaves']  || [];
+    nEmails = _ghData['td2_nEmails'] || [];
+    nLog    = _ghData['td2_nLog']    || [];
+    ejsCfg  = _ghData['td2_ejsCfg2'] || {pk:'',sid:'',tid:''};
+    renderAll();
+    toast('Token saved \u2713 Data loaded. SHA ready — saves will now work.');
+  }).catch(function(err){
+    toast('Token saved but load failed: '+err.message);
+    console.error('[GH] Post-token load failed:', err);
+  });
 });
 $('clearGhPatBtn').addEventListener('click', function(){
   localStorage.removeItem('gh_pat'); updateGhTokenBadge(); toast('Token removed.');
@@ -1764,6 +1781,7 @@ document.body.insertAdjacentHTML('afterbegin',
 );
 
 ghLoad().then(function(data){
+  console.log('[GH] Load success. Keys:', Object.keys(data||{}), '| SHA:', _ghSha);
   _ghData = data || {};
   // Hydrate all state from GitHub data
   members = _ghData['td2_members'] || [];
@@ -1772,13 +1790,14 @@ ghLoad().then(function(data){
   nEmails = _ghData['td2_nEmails'] || [];
   nLog    = _ghData['td2_nLog']    || [];
   ejsCfg  = _ghData['td2_ejsCfg2'] || {pk:'',sid:'',tid:''};
+  console.log('[GH] Members loaded:', members.length, '| Tasks loaded:', tasks.length);
   if(ejsConfigured()) emailjs.init(ejsCfg.pk);
   renderAll();
   var bar = document.getElementById('ghLoadingBar');
   if(bar) bar.remove();
   toast('Data loaded from GitHub ✓');
 }).catch(function(err){
-  console.warn('GitHub load failed, using local data:', err);
+  console.error('[GH] Load FAILED:', err);
   // Fallback to localStorage if GitHub fails
   members = load('td2_members', []);
   tasks   = load('td2_tasks',   []);
