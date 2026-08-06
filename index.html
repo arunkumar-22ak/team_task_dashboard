@@ -57,93 +57,71 @@ function ghGetSha(){
   });
 }
 
-// ── STEP 3: Write data to GitHub (admin or member with shared token) ─────────
-// All saves are queued — only ONE write happens at a time
-// If a save is already in progress, the latest data is held and sent after
+// ── STEP 3: Write — always fetches fresh SHA just before writing ──────────────
 function ghFlush(){
   if(_saving || !_pendingData) return;
-  // Admin uses their own PAT; member uses shared token stored in data.json by admin
   var tok = getToken() || (_ghData && _ghData['td2_sharedToken']) || '';
   if(!tok){ ghMsg('No token — view only', '#e67e22'); _pendingData = null; return; }
-  if(!_ghSha){
-    // Need SHA first — fetch then flush
-    ghMsg('Connecting...', '#f59e0b');
-    ghGetSha().then(function(sha){
-      if(sha) ghFlush();
-      else ghMsg('\u2717 Token invalid', '#c0392b');
-    });
-    return;
-  }
   _saving = true;
   var data = _pendingData;
   _pendingData = null;
   ghMsg('Saving...', '#f59e0b');
-  var content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
-  fetch(GH_API, {
-    method: 'PUT',
-    headers: {
-      'Authorization': 'token ' + tok,
-      'Accept': 'application/vnd.github.v3+json',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      message: 'dashboard: update data',
-      content: content,
-      branch:  GH_BRANCH,
-      sha:     _ghSha
-    })
+
+  // ALWAYS fetch the freshest SHA right before writing — prevents all conflicts
+  fetch(GH_API + '?ref=' + GH_BRANCH + '&t=' + Date.now(), {
+    headers: { 'Authorization': 'token ' + tok, 'Accept': 'application/vnd.github.v3+json' }
   })
-  .then(function(r){ return r.json(); })
+  .then(function(r){ return r.ok ? r.json() : null; })
+  .then(function(meta){
+    if(!meta || !meta.sha){
+      _saving = false;
+      ghMsg('\u2717 Token invalid or repo error', '#c0392b');
+      return;
+    }
+    _ghSha = meta.sha; // always use the absolute latest SHA
+    var content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
+    return fetch(GH_API, {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'token ' + tok,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: 'dashboard: update data',
+        content: content,
+        branch:  GH_BRANCH,
+        sha:     _ghSha
+      })
+    });
+  })
+  .then(function(r){ return r ? r.json() : null; })
   .then(function(res){
+    if(!res) return;
     _saving = false;
     if(res.content && res.content.sha){
-      // ✅ Success
       _ghSha = res.content.sha;
       ghMsg('\u2713 Saved', '#16a34a');
       setTimeout(function(){ ghMsg(''); }, 3000);
-      if(_pendingData) ghFlush();
+      if(_pendingData) ghFlush(); // flush anything queued while we were saving
     } else {
-      var msg = (res.message || '').toLowerCase();
-      // Detect SHA conflict: GitHub says "does not match" or "sha" or 422
-      var isShaError = msg.indexOf('does not match') !== -1
-                    || msg.indexOf('sha') !== -1
-                    || msg.indexOf('conflict') !== -1;
-      if(isShaError){
-        ghMsg('Sync conflict \u2014 resolving...', '#f59e0b');
-        console.warn('[GH] SHA conflict detected, re-fetching...');
-        _ghSha = null;
-        _pendingData = data; // keep our changes queued
-        // Re-fetch SHA then reload latest data and merge before retrying
-        ghGetSha().then(function(sha){
-          if(!sha){ ghMsg('\u2717 Token invalid', '#c0392b'); return; }
-          ghLoad().then(function(latest){
-            if(latest && Object.keys(latest).length){
-              // Merge: latest from GitHub + our in-memory changes on top
-              Object.keys(_ghData).forEach(function(k){ latest[k] = _ghData[k]; });
-              _ghData = latest;
-              _pendingData = _ghData;
-            }
-            ghFlush(); // retry with fresh SHA + merged data
-          });
-        });
-      } else {
-        ghMsg('\u2717 ' + (res.message || 'Save failed'), '#c0392b');
-        console.error('[GH] Write failed:', res);
-      }
+      ghMsg('\u2717 ' + (res.message || 'Save failed'), '#c0392b');
+      console.error('[GH] Write failed:', res);
+      _pendingData = data; // put back so user can retry
     }
   })
   .catch(function(err){
     _saving = false;
-    ghMsg('\u2717 Network error \u2014 retrying...', '#c0392b');
+    ghMsg('\u2717 Network error — retrying...', '#c0392b');
     console.error('[GH] Save error:', err);
-    setTimeout(function(){ if(_pendingData) ghFlush(); }, 3000);
+    _pendingData = data;
+    setTimeout(function(){ ghFlush(); }, 3000);
   });
 }
 
-// ── Public save — called on every user action ─────────────────────────────────
-// Debounced 600ms so rapid actions (add member + add task) merge into one write
+// ── Public save — debounced 600ms, merges rapid actions into one write ────────
 function ghSave(data){
-  _pendingData = data;              // always keep latest snapshot
+  _pendingData = data;
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(ghFlush, 600);
 }
