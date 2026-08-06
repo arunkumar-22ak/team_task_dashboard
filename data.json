@@ -1,58 +1,8 @@
 {
-  "td2_members": [
-    {
-      "id": "msh6s59kgfh",
-      "name": "Sunita",
-      "role": "Team Lead",
-      "color": "#3b82d4"
-    },
-    {
-      "id": "msh7p4u4283",
-      "name": "Arun",
-      "role": "Developer",
-      "color": "#7c5cd8"
-    },
-    {
-      "id": "msh7y129v1i",
-      "name": "lekya",
-      "role": "Developer",
-      "color": "#16a34a"
-    },
-    {
-      "id": "mshawfohat7",
-      "name": "Preetha",
-      "role": "Manager",
-      "color": "#ea580c"
-    },
-    {
-      "id": "mshbenc24s1",
-      "name": "Koti",
-      "role": "Developer",
-      "color": "#0891b2"
-    }
-  ],
-  "td2_tasks": [
-    {
-      "id": "msh6trqk7gi",
-      "memberId": "msh6s59kgfh",
-      "title": "Task Assignement",
-      "desc": "",
-      "type": "daily",
-      "date": "2026-08-06",
-      "month": "2026-08",
-      "status": "done",
-      "createdAt": "2026-08-06T07:21:47.180Z"
-    },
-    {
-      "id": "msh8ac9mbhb",
-      "memberId": "msh7p4u4283",
-      "title": "QV",
-      "desc": "",
-      "type": "daily",
-      "date": "2026-08-06",
-      "month": "2026-08",
-      "status": "done",
-      "createdAt": "2026-08-06T08:02:39.898Z"
-    }
-  ]
+  "td2_members": [],
+  "td2_tasks": [],
+  "td2_leaves": [],
+  "td2_nEmails": [],
+  "td2_nLog": [],
+  "td2_ejsCfg2": { "pk": "", "sid": "", "tid": "" }
 }
