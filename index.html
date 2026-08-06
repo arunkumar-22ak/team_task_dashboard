@@ -14,31 +14,28 @@ var GH_BRANCH = 'main';
 var GH_FILE   = 'data.json';
 // Token is stored in browser localStorage only — never in source code
 var GH_API    = 'https://api.github.com/repos/'+GH_OWNER+'/'+GH_REPO+'/contents/'+GH_FILE;
-var RAW_URL   = 'https://raw.githubusercontent.com/'+GH_OWNER+'/'+GH_REPO+'/'+GH_BRANCH+'/'+GH_FILE;
 
 var _ghSha    = null;
 var _saveTimer= null;
 
 function getToken(){ return localStorage.getItem('gh_pat') || ''; }
 
-// Read data — uses raw URL (no auth needed for public repo)
+// Read data — uses GitHub API directly (always fresh, no CDN cache)
 function ghLoad(){
-  return fetch(RAW_URL+'?t='+Date.now())
+  var tok = getToken();
+  var headers = { 'Accept': 'application/vnd.github.v3+json' };
+  if(tok) headers['Authorization'] = 'token '+tok;
+  return fetch(GH_API+'?ref='+GH_BRANCH+'&t='+Date.now(), { headers: headers })
   .then(function(r){
     if(r.status===404) return null;
     if(!r.ok) throw new Error('GitHub read failed: '+r.status);
     return r.json();
   })
-  .then(function(data){
-    // Also fetch SHA for future writes
-    var tok = getToken();
-    if(tok){
-      return fetch(GH_API+'?ref='+GH_BRANCH, {
-        headers:{ 'Authorization':'token '+tok, 'Accept':'application/vnd.github.v3+json' }
-      }).then(function(r){ return r.ok ? r.json() : null; })
-        .then(function(meta){ if(meta && meta.sha) _ghSha = meta.sha; return data || {}; });
-    }
-    return data || {};
+  .then(function(meta){
+    if(!meta) return {};
+    _ghSha = meta.sha;
+    var raw = decodeURIComponent(escape(atob(meta.content.replace(/\n/g,''))));
+    return JSON.parse(raw);
   });
 }
 
