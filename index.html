@@ -6,99 +6,124 @@
 <title>Team Task Dashboard</title>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
-<!-- GitHub Storage config -->
+<!-- GitHub Storage -->
 <script>
+// ── Config ────────────────────────────────────────────────────────────────────
 var GH_OWNER  = 'arunkumar-22ak';
 var GH_REPO   = 'team_task_dashboard';
 var GH_BRANCH = 'main';
 var GH_FILE   = 'data.json';
-// READ  : raw URL  — no auth, no rate limit, works for EVERYONE
-// WRITE : API URL  — needs admin token only
-var GH_RAW = 'https://raw.githubusercontent.com/'+GH_OWNER+'/'+GH_REPO+'/'+GH_BRANCH+'/'+GH_FILE;
-var GH_API = 'https://api.github.com/repos/'+GH_OWNER+'/'+GH_REPO+'/contents/'+GH_FILE;
+var GH_API    = 'https://api.github.com/repos/'+GH_OWNER+'/'+GH_REPO+'/contents/'+GH_FILE;
+var GH_RAW    = 'https://raw.githubusercontent.com/'+GH_OWNER+'/'+GH_REPO+'/refs/heads/'+GH_BRANCH+'/'+GH_FILE;
 
-var _ghSha    = null;
-var _saveTimer= null;
+var _ghSha        = null;   // current file SHA — updated after every write
+var _pendingData  = null;   // data waiting to be saved
+var _saveTimer    = null;   // debounce handle
+var _saving       = false;  // prevent concurrent writes
 
 function getToken(){ return localStorage.getItem('gh_pat') || ''; }
 
-// ── READ: uses raw URL — no token, no rate limit, always fresh with cache-bust ──
+// ── Status bar (top-right of page) ───────────────────────────────────────────
+function ghMsg(msg, color){
+  var el = document.getElementById('ghSaveStatus');
+  if(el){ el.textContent = msg; el.style.color = color || '#8b949e'; }
+}
+
+// ── STEP 1: Load data on page open ───────────────────────────────────────────
+// Teammates use raw URL — no token, no rate limit, always works
+// Admin also uses raw URL for data, but fetches SHA via API in background
 function ghLoad(){
-  return fetch(GH_RAW + '?t=' + Date.now())
+  var url = GH_RAW + '?nocache=' + Date.now();
+  return fetch(url)
     .then(function(r){
-      if(r.status === 404) return {};
-      if(!r.ok) throw new Error('Load failed: ' + r.status);
+      if(r.status === 404) return {};   // first time — no file yet
+      if(!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
-    })
-    .then(function(data){
-      console.log('[GH] Loaded OK via raw URL. Members:', (data.td2_members||[]).length);
-      // If admin is logged in, fetch SHA in background so saves work
-      var tok = getToken();
-      if(tok) ghFetchSha(tok);
-      return data;
     });
 }
 
-// ── Fetch SHA (admin only, needed before first write) ────────────────────────
-function ghFetchSha(tok){
-  return fetch(GH_API + '?ref=' + GH_BRANCH, {
-    headers:{ 'Authorization':'token '+tok, 'Accept':'application/vnd.github.v3+json' }
+// ── STEP 2: Get SHA from API (admin only, needed to write) ────────────────────
+function ghGetSha(){
+  var tok = getToken();
+  if(!tok) return Promise.resolve(null);
+  return fetch(GH_API + '?ref=' + GH_BRANCH + '&t=' + Date.now(), {
+    headers: { 'Authorization': 'token ' + tok, 'Accept': 'application/vnd.github.v3+json' }
   })
   .then(function(r){ return r.ok ? r.json() : null; })
   .then(function(meta){
-    if(meta && meta.sha){
-      _ghSha = meta.sha;
-      console.log('[GH] SHA ready:', _ghSha);
-    } else {
-      console.warn('[GH] SHA fetch failed — check token');
-      ghStatusMsg('\u2717 Token invalid or expired', '#c0392b');
-    }
+    if(meta && meta.sha){ _ghSha = meta.sha; }
+    else { ghMsg('\u2717 Token invalid — go to Notifications tab', '#c0392b'); }
+    return _ghSha;
   });
 }
 
-// ── Status indicator in topbar ───────────────────────────────────────────────
-function ghStatusMsg(msg, color){
-  var el = document.getElementById('ghSaveStatus');
-  if(!el) return;
-  el.textContent = msg; el.style.color = color || '#8b949e';
+// ── STEP 3: Write data to GitHub (admin only) ─────────────────────────────────
+// All saves are queued — only ONE write happens at a time
+// If a save is already in progress, the latest data is held and sent after
+function ghFlush(){
+  if(_saving || !_pendingData) return;
+  var tok = getToken();
+  if(!tok){ ghMsg('No token — view only', '#e67e22'); _pendingData = null; return; }
+  if(!_ghSha){
+    // Need SHA first — fetch then flush
+    ghMsg('Connecting...', '#f59e0b');
+    ghGetSha().then(function(sha){
+      if(sha) ghFlush();
+      else ghMsg('\u2717 Token invalid', '#c0392b');
+    });
+    return;
+  }
+  _saving = true;
+  var data = _pendingData;
+  _pendingData = null;
+  ghMsg('Saving...', '#f59e0b');
+  var content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
+  fetch(GH_API, {
+    method: 'PUT',
+    headers: {
+      'Authorization': 'token ' + tok,
+      'Accept': 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      message: 'dashboard: update data',
+      content: content,
+      branch:  GH_BRANCH,
+      sha:     _ghSha
+    })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(res){
+    _saving = false;
+    if(res.content && res.content.sha){
+      _ghSha = res.content.sha;       // update SHA for next write
+      ghMsg('\u2713 Saved', '#16a34a');
+      setTimeout(function(){ ghMsg(''); }, 3000);
+      if(_pendingData) ghFlush();     // flush anything queued during this write
+    } else if((res.message||'').toLowerCase().indexOf('sha') !== -1){
+      // Stale SHA — re-fetch and retry
+      ghMsg('Retrying...', '#f59e0b');
+      _ghSha = null;
+      _pendingData = data;            // put data back in queue
+      ghGetSha().then(function(sha){ if(sha) ghFlush(); });
+    } else {
+      ghMsg('\u2717 ' + (res.message || 'Save failed'), '#c0392b');
+      console.error('[GH] Write failed:', res);
+    }
+  })
+  .catch(function(err){
+    _saving = false;
+    ghMsg('\u2717 Network error', '#c0392b');
+    console.error('[GH] Save error:', err);
+  });
 }
 
-// ── WRITE: uses API with token — admin only ───────────────────────────────────
+// ── Public save — called on every user action ─────────────────────────────────
+// Debounced 600ms so rapid actions (add member + add task) merge into one write
 function ghSave(data){
-  var tok = getToken();
-  if(!tok){ ghStatusMsg('View only — no token', '#e67e22'); return; }
-  if(!_ghSha){ ghStatusMsg('Waiting for SHA...', '#f59e0b'); ghFetchSha(tok); return; }
+  _pendingData = data;              // always keep latest snapshot
   clearTimeout(_saveTimer);
-  ghStatusMsg('Saving...', '#f59e0b');
-  _saveTimer = setTimeout(function(){
-    var content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
-    fetch(GH_API, {
-      method: 'PUT',
-      headers:{
-        'Authorization':'token '+tok,
-        'Accept':'application/vnd.github.v3+json',
-        'Content-Type':'application/json'
-      },
-      body: JSON.stringify({ message:'dashboard: update data', content:content, branch:GH_BRANCH, sha:_ghSha })
-    })
-    .then(function(r){ return r.json(); })
-    .then(function(res){
-      if(res.content){
-        _ghSha = res.content.sha;
-        ghStatusMsg('\u2713 Saved', '#16a34a');
-        setTimeout(function(){ ghStatusMsg(''); }, 3000);
-      } else {
-        ghStatusMsg('\u2717 ' + (res.message||'Save failed'), '#c0392b');
-        console.error('[GH] Write error:', res);
-        // If SHA is stale, refresh it
-        if((res.message||'').indexOf('sha')!==-1) ghFetchSha(tok);
-      }
-    })
-    .catch(function(err){
-      ghStatusMsg('\u2717 Network error', '#c0392b');
-      console.error('[GH] Save failed:', err);
-    });
-  }, 1500);
+  _saveTimer = setTimeout(ghFlush, 600);
 }
 </script>
 <style>
@@ -733,8 +758,10 @@ function load(k,d){
 }
 function save(k,v){
   _ghData[k] = v;
-  localStorage.setItem(k, JSON.stringify(v)); // keep local copy as fallback
-  ghSave(_ghData);
+  localStorage.setItem(k, JSON.stringify(v));
+  // Debounced: collects ALL rapid saves (members + tasks + etc) into ONE GitHub write
+  clearTimeout(window._saveAllTimer);
+  window._saveAllTimer = setTimeout(function(){ ghSave(_ghData); }, 800);
 }
 function today(){ return new Date().toISOString().slice(0,10); }
 function thisMonth(){ return new Date().toISOString().slice(0,7); }
@@ -1093,10 +1120,10 @@ $('saveGhPatBtn').addEventListener('click', function(){
   localStorage.setItem('gh_pat', pat);
   $('ghPatInput').value = '';
   updateGhTokenBadge();
-  toast('Token saved \u2713 Connecting to GitHub...');
-  ghFetchSha(pat).then(function(){
-    if(_ghSha) toast('Ready \u2713 You can now add members and tasks — they will sync to all teammates.');
-    else toast('\u2717 Token may be invalid — check Notifications tab.');
+  toast('Token saved \u2713 Connecting...');
+  ghGetSha().then(function(sha){
+    if(sha) toast('Ready \u2713 All your actions will now sync to teammates.');
+    else toast('\u2717 Token invalid — generate a new one at github.com/settings/tokens');
   });
 });
 $('clearGhPatBtn').addEventListener('click', function(){
@@ -1780,26 +1807,25 @@ document.body.insertAdjacentHTML('afterbegin',
 );
 
 ghLoad().then(function(data){
-  console.log('[GH] Load success. Keys:', Object.keys(data||{}), '| SHA:', _ghSha);
   _ghData = data || {};
-  // Hydrate all state from GitHub data
   members = _ghData['td2_members'] || [];
   tasks   = _ghData['td2_tasks']   || [];
   leaves  = _ghData['td2_leaves']  || [];
   nEmails = _ghData['td2_nEmails'] || [];
   nLog    = _ghData['td2_nLog']    || [];
   ejsCfg  = _ghData['td2_ejsCfg2'] || {pk:'',sid:'',tid:''};
-  console.log('[GH] Members loaded:', members.length, '| Tasks loaded:', tasks.length);
   if(ejsConfigured()) emailjs.init(ejsCfg.pk);
   renderAll();
   var bar = document.getElementById('ghLoadingBar');
   if(bar) bar.remove();
-  toast('Data loaded from GitHub ✓');
+  toast('Data loaded \u2713');
+  // If admin token exists, fetch SHA in background so saves work immediately
+  if(getToken()) ghGetSha();
 }).catch(function(err){
-  console.error('[GH] Load FAILED:', err);
-  renderAll(); // render empty state — do NOT fall back to stale localStorage
+  console.error('[GH] Load failed:', err);
+  renderAll();
   var bar = document.getElementById('ghLoadingBar');
-  if(bar){ bar.style.background='#c0392b'; bar.textContent='Could not load data: '+err.message+' — check console (F12).'; setTimeout(function(){ bar.remove(); }, 6000); }
+  if(bar){ bar.style.background='#c0392b'; bar.textContent='Could not load data — check your internet connection.'; setTimeout(function(){ bar.remove(); }, 5000); }
 });
 </script>
 </body>
