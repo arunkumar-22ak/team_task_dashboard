@@ -1,8 +1,10 @@
 {
-  "td2_members": [],
-  "td2_tasks": [],
-  "td2_leaves": [],
-  "td2_nEmails": [],
-  "td2_nLog": [],
-  "td2_ejsCfg2": { "pk": "", "sid": "", "tid": "" }
+  "td2_members": [
+    {
+      "id": "msh6s59kgfh",
+      "name": "Sunita",
+      "role": "Team Lead",
+      "color": "#3b82d4"
+    }
+  ]
 }
