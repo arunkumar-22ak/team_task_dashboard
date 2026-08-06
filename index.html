@@ -12,68 +12,66 @@ var GH_OWNER  = 'arunkumar-22ak';
 var GH_REPO   = 'team_task_dashboard';
 var GH_BRANCH = 'main';
 var GH_FILE   = 'data.json';
-// Token is stored in browser localStorage only — never in source code
-var GH_API    = 'https://api.github.com/repos/'+GH_OWNER+'/'+GH_REPO+'/contents/'+GH_FILE;
+// READ  : raw URL  — no auth, no rate limit, works for EVERYONE
+// WRITE : API URL  — needs admin token only
+var GH_RAW = 'https://raw.githubusercontent.com/'+GH_OWNER+'/'+GH_REPO+'/'+GH_BRANCH+'/'+GH_FILE;
+var GH_API = 'https://api.github.com/repos/'+GH_OWNER+'/'+GH_REPO+'/contents/'+GH_FILE;
 
 var _ghSha    = null;
 var _saveTimer= null;
 
 function getToken(){ return localStorage.getItem('gh_pat') || ''; }
 
-// Read data — everyone can read (no token needed for public repo)
-// Token used only when available so SHA is captured for later writes
+// ── READ: uses raw URL — no token, no rate limit, always fresh with cache-bust ──
 function ghLoad(){
-  var tok = getToken();
-  var headers = { 'Accept': 'application/vnd.github.v3+json' };
-  if(tok) headers['Authorization'] = 'token ' + tok;
+  return fetch(GH_RAW + '?t=' + Date.now())
+    .then(function(r){
+      if(r.status === 404) return {};
+      if(!r.ok) throw new Error('Load failed: ' + r.status);
+      return r.json();
+    })
+    .then(function(data){
+      console.log('[GH] Loaded OK via raw URL. Members:', (data.td2_members||[]).length);
+      // If admin is logged in, fetch SHA in background so saves work
+      var tok = getToken();
+      if(tok) ghFetchSha(tok);
+      return data;
+    });
+}
 
-  return fetch(GH_API+'?ref='+GH_BRANCH+'&t='+Date.now(), { headers: headers })
-  .then(function(r){
-    if(r.status===404) return null;
-    if(!r.ok) throw new Error('GitHub read failed: '+r.status);
-    return r.json();
+// ── Fetch SHA (admin only, needed before first write) ────────────────────────
+function ghFetchSha(tok){
+  return fetch(GH_API + '?ref=' + GH_BRANCH, {
+    headers:{ 'Authorization':'token '+tok, 'Accept':'application/vnd.github.v3+json' }
   })
+  .then(function(r){ return r.ok ? r.json() : null; })
   .then(function(meta){
-    if(!meta) return {};
-    _ghSha = meta.sha; // captured whether or not token was used
-    console.log('[GH] Loaded OK. SHA:', _ghSha, '| Token used:', !!tok);
-    var raw = decodeURIComponent(escape(atob(meta.content.replace(/\n/g,''))));
-    return JSON.parse(raw);
-  })
-  .then(function(data){
-    // If no token, also fetch SHA separately via authenticated call so writes work for admin
-    if(tok) return data;
-    // No token — just return data as-is (read-only teammate)
-    return data;
+    if(meta && meta.sha){
+      _ghSha = meta.sha;
+      console.log('[GH] SHA ready:', _ghSha);
+    } else {
+      console.warn('[GH] SHA fetch failed — check token');
+      ghStatusMsg('\u2717 Token invalid or expired', '#c0392b');
+    }
   });
 }
 
-// Fetch just the SHA (called after admin enters token, so writes work immediately)
-function ghFetchSha(tok){
-  return fetch(GH_API+'?ref='+GH_BRANCH, {
-    headers:{ 'Authorization':'token '+tok, 'Accept':'application/vnd.github.v3+json' }
-  }).then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(meta){ if(meta && meta.sha){ _ghSha = meta.sha; console.log('[GH] SHA fetched:', _ghSha); } });
-}
-
-// Show a small save status indicator in the top bar
+// ── Status indicator in topbar ───────────────────────────────────────────────
 function ghStatusMsg(msg, color){
   var el = document.getElementById('ghSaveStatus');
   if(!el) return;
   el.textContent = msg; el.style.color = color || '#8b949e';
 }
 
-// Write data — only works if admin token is stored in browser
+// ── WRITE: uses API with token — admin only ───────────────────────────────────
 function ghSave(data){
   var tok = getToken();
-  console.log('[GH] ghSave called. Token present:', !!tok, '| SHA:', _ghSha);
-  if(!tok){ ghStatusMsg('Read-only (no token)', '#e67e22'); return; }
+  if(!tok){ ghStatusMsg('View only — no token', '#e67e22'); return; }
+  if(!_ghSha){ ghStatusMsg('Waiting for SHA...', '#f59e0b'); ghFetchSha(tok); return; }
   clearTimeout(_saveTimer);
   ghStatusMsg('Saving...', '#f59e0b');
   _saveTimer = setTimeout(function(){
     var content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
-    var body = { message: 'dashboard: update data', content: content, branch: GH_BRANCH };
-    if(_ghSha) body.sha = _ghSha;
     fetch(GH_API, {
       method: 'PUT',
       headers:{
@@ -81,23 +79,24 @@ function ghSave(data){
         'Accept':'application/vnd.github.v3+json',
         'Content-Type':'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify({ message:'dashboard: update data', content:content, branch:GH_BRANCH, sha:_ghSha })
     })
     .then(function(r){ return r.json(); })
     .then(function(res){
       if(res.content){
         _ghSha = res.content.sha;
-        ghStatusMsg('\u2713 Saved to GitHub', '#16a34a');
+        ghStatusMsg('\u2713 Saved', '#16a34a');
         setTimeout(function(){ ghStatusMsg(''); }, 3000);
       } else {
-        var msg = res.message || 'Unknown error';
-        ghStatusMsg('\u2717 Save failed: '+msg, '#c0392b');
-        console.error('GitHub write error:', res);
+        ghStatusMsg('\u2717 ' + (res.message||'Save failed'), '#c0392b');
+        console.error('[GH] Write error:', res);
+        // If SHA is stale, refresh it
+        if((res.message||'').indexOf('sha')!==-1) ghFetchSha(tok);
       }
     })
     .catch(function(err){
-      ghStatusMsg('\u2717 Save failed (network)', '#c0392b');
-      console.error('GitHub save failed:', err);
+      ghStatusMsg('\u2717 Network error', '#c0392b');
+      console.error('[GH] Save failed:', err);
     });
   }, 1500);
 }
@@ -1094,13 +1093,10 @@ $('saveGhPatBtn').addEventListener('click', function(){
   localStorage.setItem('gh_pat', pat);
   $('ghPatInput').value = '';
   updateGhTokenBadge();
-  toast('GitHub token saved — fetching SHA...');
-  // Fetch SHA with the token so writes work immediately
+  toast('Token saved \u2713 Connecting to GitHub...');
   ghFetchSha(pat).then(function(){
-    toast('Token saved \u2713 Ready to save data to GitHub.');
-  }).catch(function(err){
-    toast('Token saved but SHA fetch failed: '+err.message);
-    console.error('[GH] SHA fetch failed:', err);
+    if(_ghSha) toast('Ready \u2713 You can now add members and tasks — they will sync to all teammates.');
+    else toast('\u2717 Token may be invalid — check Notifications tab.');
   });
 });
 $('clearGhPatBtn').addEventListener('click', function(){
