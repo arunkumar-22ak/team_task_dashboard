@@ -1,8 +1,19 @@
 {
-  "td2_members": [],
+  "td2_members": [
+    {
+      "id": "msiguxkyzjq",
+      "name": "Jeevitha",
+      "role": "Developer",
+      "color": "#3b82d4"
+    }
+  ],
   "td2_tasks": [],
   "td2_leaves": [],
   "td2_nEmails": [],
   "td2_nLog": [],
-  "td2_ejsCfg2": { "pk": "", "sid": "", "tid": "" }
+  "td2_ejsCfg2": {
+    "pk": "",
+    "sid": "",
+    "tid": ""
+  }
 }
