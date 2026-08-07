@@ -1,50 +1,8 @@
 {
-  "td2_members": [
-    {
-      "id": "mshbo9p02u2",
-      "name": "Arun",
-      "role": "Lead",
-      "color": "#3b82d4"
-    },
-    {
-      "id": "mshbx4tbmhe",
-      "name": "Sunita",
-      "role": "Lead",
-      "color": "#7c5cd8"
-    },
-    {
-      "id": "mshc203b011",
-      "name": "Koti",
-      "role": "Developer",
-      "color": "#16a34a"
-    },
-    {
-      "id": "mshcnp04mwl",
-      "name": "Leela",
-      "role": "Developer",
-      "color": "#ea580c"
-    }
-  ],
-  "td2_tasks": [
-    {
-      "id": "mshckvpq5xw",
-      "memberId": "mshc203b011",
-      "title": "CR01",
-      "desc": "",
-      "type": "daily",
-      "date": "2026-08-06",
-      "month": "2026-08",
-      "status": "done",
-      "createdAt": "2026-08-06T10:02:50.126Z"
-    }
-  ],
+  "td2_members": [],
+  "td2_tasks": [],
   "td2_leaves": [],
   "td2_nEmails": [],
   "td2_nLog": [],
-  "td2_ejsCfg2": {
-    "pk": "",
-    "sid": "",
-    "tid": ""
-  },
-  "td2_teamPin": "Team2027"
+  "td2_ejsCfg2": { "pk": "", "sid": "", "tid": "" }
 }
