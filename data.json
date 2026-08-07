@@ -49,7 +49,16 @@
       "createdAt": "2026-08-07T05:18:10.434Z"
     }
   ],
-  "td2_leaves": [],
+  "td2_leaves": [
+    {
+      "id": "msii7czhlw5",
+      "memberId": "msihtxvnotw",
+      "from": "2026-08-20",
+      "to": "2026-08-20",
+      "type": "annual",
+      "note": ""
+    }
+  ],
   "td2_nEmails": [],
   "td2_nLog": [],
   "td2_ejsCfg2": {
