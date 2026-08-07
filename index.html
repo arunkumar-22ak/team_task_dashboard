@@ -14,12 +14,13 @@ var GH_REPO   = 'team_task_dashboard';
 var GH_BRANCH = 'main';
 var GH_FILE   = 'data.json';
 var GH_API    = 'https://api.github.com/repos/'+GH_OWNER+'/'+GH_REPO+'/contents/'+GH_FILE;
-var GH_RAW    = 'https://raw.githubusercontent.com/'+GH_OWNER+'/'+GH_REPO+'/refs/heads/'+GH_BRANCH+'/'+GH_FILE;
 
 var _ghSha        = null;   // current file SHA — updated after every write
 var _pendingData  = null;   // data waiting to be saved
 var _saveTimer    = null;   // debounce handle
 var _saving       = false;  // prevent concurrent writes
+var _lastLoadedSha = null;  // SHA of last loaded version — used to detect remote changes
+var _pollTimer    = null;   // auto-refresh polling handle
 
 function getToken(){ return localStorage.getItem('gh_pat') || ''; }
 
@@ -29,17 +30,70 @@ function ghMsg(msg, color){
   if(el){ el.textContent = msg; el.style.color = color || '#8b949e'; }
 }
 
-// ── STEP 1: Load data on page open ───────────────────────────────────────────
-// Teammates use raw URL — no token, no rate limit, always works
-// Admin also uses raw URL for data, but fetches SHA via API in background
+// ── STEP 1: Load data via API (bypasses CDN cache — always fresh) ─────────────
+// Uses the GitHub Contents API which returns base64-encoded content + SHA.
+// Falls back to unauthenticated request so teammates without a token can still load.
 function ghLoad(){
-  var url = GH_RAW + '?nocache=' + Date.now();
-  return fetch(url)
+  var tok = getToken();
+  var headers = { 'Accept': 'application/vnd.github.v3+json' };
+  if(tok) headers['Authorization'] = 'token ' + tok;
+  return fetch(GH_API + '?ref=' + GH_BRANCH + '&t=' + Date.now(), { headers: headers })
     .then(function(r){
       if(r.status === 404) return {};   // first time — no file yet
       if(!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
+    })
+    .then(function(meta){
+      if(!meta || !meta.content) return {};  // empty / new repo
+      _lastLoadedSha = meta.sha || null;
+      _ghSha = meta.sha || null;
+      // GitHub returns base64 with newlines — strip them before decoding
+      var raw = atob(meta.content.replace(/\n/g,''));
+      // decode UTF-8 safely
+      try {
+        return JSON.parse(decodeURIComponent(escape(raw)));
+      } catch(e) {
+        return JSON.parse(raw);
+      }
     });
+}
+
+// ── Auto-poll: reload data when a teammate saves a change ─────────────────────
+// Polls the API every 30 s. If the SHA changed it means someone else saved —
+// reload data silently and re-render (without overwriting any pending local save).
+function startPolling(){
+  clearInterval(_pollTimer);
+  _pollTimer = setInterval(function(){
+    if(_saving || _pendingData) return; // don't poll while we're mid-save
+    var tok = getToken();
+    var headers = { 'Accept': 'application/vnd.github.v3+json' };
+    if(tok) headers['Authorization'] = 'token ' + tok;
+    fetch(GH_API + '?ref=' + GH_BRANCH + '&t=' + Date.now(), { headers: headers })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(meta){
+        if(!meta || !meta.sha) return;
+        if(meta.sha === _lastLoadedSha) return; // no change — nothing to do
+        // Remote data has changed — decode and reload
+        _lastLoadedSha = meta.sha;
+        _ghSha = meta.sha;
+        var raw = atob(meta.content.replace(/\n/g,''));
+        var newData;
+        try { newData = JSON.parse(decodeURIComponent(escape(raw))); }
+        catch(e) { newData = JSON.parse(raw); }
+        _ghData  = newData || {};
+        members  = _ghData['td2_members'] || [];
+        tasks    = _ghData['td2_tasks']   || [];
+        leaves   = _ghData['td2_leaves']  || [];
+        nEmails  = _ghData['td2_nEmails'] || [];
+        nLog     = _ghData['td2_nLog']    || [];
+        ejsCfg   = _ghData['td2_ejsCfg2'] || {pk:'',sid:'',tid:''};
+        if(_ghData['td2_teamPin']) localStorage.setItem('gh_team_pin', _ghData['td2_teamPin']);
+        if(typeof renderAll === 'function') renderAll();
+        ghMsg('\u21BB Synced', '#3b82d4');
+        setTimeout(function(){ ghMsg(''); }, 2500);
+      })
+      .catch(function(){}); // silently ignore poll errors
+  }, 30000); // every 30 seconds
 }
 
 // ── STEP 2: Get SHA from API (needed to write) ───────────────────────────────
@@ -1928,8 +1982,9 @@ ghLoad().then(function(data){
   var bar = document.getElementById('ghLoadingBar');
   if(bar) bar.remove();
   toast('Data loaded \u2713');
-  // If admin token exists, fetch SHA in background so saves work immediately
-  if(getToken()) ghGetSha();
+  // Start auto-polling so teammate changes appear without a manual refresh
+  startPolling();
+  // If admin token exists, SHA is already set from ghLoad (no extra call needed)
 }).catch(function(err){
   console.error('[GH] Load failed:', err);
   renderAll();
