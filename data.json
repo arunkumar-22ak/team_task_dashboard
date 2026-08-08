@@ -7,12 +7,6 @@
       "color": "#3b82d4"
     },
     {
-      "id": "msihtxvnotw",
-      "name": "SaiSampath",
-      "role": "Developer",
-      "color": "#7c5cd8"
-    },
-    {
       "id": "msii5ecror9",
       "name": "Leela",
       "role": "Developer",
@@ -36,17 +30,6 @@
       "month": "2026-08",
       "status": "done",
       "createdAt": "2026-08-07T05:05:31.724Z"
-    },
-    {
-      "id": "msihunlt6g2",
-      "memberId": "msihtxvnotw",
-      "title": "Review",
-      "desc": "",
-      "type": "daily",
-      "date": "2026-08-07",
-      "month": "2026-08",
-      "status": "done",
-      "createdAt": "2026-08-07T05:18:10.434Z"
     }
   ],
   "td2_leaves": [
