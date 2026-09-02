@@ -87,6 +87,14 @@
       "to": "2026-08-14",
       "type": "annual",
       "note": ""
+    },
+    {
+      "id": "mtjr2bcvpl7",
+      "memberId": "msiguxkyzjq",
+      "from": "2026-09-02",
+      "to": "2026-09-02",
+      "type": "annual",
+      "note": ""
     }
   ],
   "td2_nEmails": [],
