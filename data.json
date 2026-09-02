@@ -23,6 +23,12 @@
       "name": "Arun",
       "role": "TeamLead",
       "color": "#ea580c"
+    },
+    {
+      "id": "mtjrek5paci",
+      "name": "Koti",
+      "role": "Developer",
+      "color": "#0891b2"
     }
   ],
   "td2_tasks": [
