@@ -159,17 +159,6 @@
       "month": "2026-09",
       "status": "not-started",
       "createdAt": "2026-09-02T04:54:59.643Z"
-    },
-    {
-      "id": "mtjr2ltbbpn",
-      "memberId": "msiguxkyzjq",
-      "title": "Validation",
-      "desc": "",
-      "type": "daily",
-      "date": "2026-09-02",
-      "month": "2026-09",
-      "status": "not-started",
-      "createdAt": "2026-09-02T07:03:46.415Z"
     }
   ],
   "td2_leaves": [],
