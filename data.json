@@ -58,6 +58,17 @@
       "month": "2026-09",
       "status": "not-started",
       "createdAt": "2026-09-02T04:53:04.175Z"
+    },
+    {
+      "id": "mtjmgzsq0xk",
+      "memberId": "msiguxkyzjq",
+      "title": "QV,Peer",
+      "desc": "",
+      "type": "daily",
+      "date": "2026-09-02",
+      "month": "2026-09",
+      "status": "done",
+      "createdAt": "2026-09-02T04:54:59.643Z"
     }
   ],
   "td2_leaves": [
