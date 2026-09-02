@@ -172,16 +172,7 @@
       "createdAt": "2026-09-02T07:03:46.415Z"
     }
   ],
-  "td2_leaves": [
-    {
-      "id": "msiln77tkyg",
-      "memberId": "msiguxkyzjq",
-      "from": "2026-08-11",
-      "to": "2026-08-14",
-      "type": "annual",
-      "note": ""
-    }
-  ],
+  "td2_leaves": [],
   "td2_nEmails": [],
   "td2_nLog": [],
   "td2_ejsCfg2": {
