@@ -128,17 +128,6 @@
       "createdAt": "2026-08-07T05:05:31.724Z"
     },
     {
-      "id": "mtjmeco7tlp",
-      "memberId": "msiguxkyzjq",
-      "title": "Build",
-      "desc": "",
-      "type": "monthly",
-      "date": "",
-      "month": "2026-09",
-      "status": "not-started",
-      "createdAt": "2026-09-02T04:52:56.359Z"
-    },
-    {
       "id": "mtjmeipbs3f",
       "memberId": "msii5ecror9",
       "title": "Injection",
@@ -148,17 +137,6 @@
       "month": "2026-09",
       "status": "not-started",
       "createdAt": "2026-09-02T04:53:04.175Z"
-    },
-    {
-      "id": "mtjmgzsq0xk",
-      "memberId": "msiguxkyzjq",
-      "title": "QV,Peer",
-      "desc": "",
-      "type": "daily",
-      "date": "2026-09-02",
-      "month": "2026-09",
-      "status": "not-started",
-      "createdAt": "2026-09-02T04:54:59.643Z"
     }
   ],
   "td2_leaves": [],
