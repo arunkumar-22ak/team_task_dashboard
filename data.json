@@ -115,19 +115,7 @@
       "color": "#7c3aed"
     }
   ],
-  "td2_tasks": [
-    {
-      "id": "mtjmeipbs3f",
-      "memberId": "msii5ecror9",
-      "title": "Injection",
-      "desc": "",
-      "type": "monthly",
-      "date": "",
-      "month": "2026-09",
-      "status": "not-started",
-      "createdAt": "2026-09-02T04:53:04.175Z"
-    }
-  ],
+  "td2_tasks": [],
   "td2_leaves": [],
   "td2_nEmails": [],
   "td2_nLog": [],
